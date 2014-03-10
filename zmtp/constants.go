@@ -17,17 +17,3 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 package zmtp
-
-type SocketType byte
-
-const (
-	PAIR   SocketType = 0x00
-	PUB    SocketType = 0x01
-	SUB    SocketType = 0x02
-	REQ    SocketType = 0x03
-	REP    SocketType = 0x04
-	DEALER SocketType = 0x05
-	ROUTER SocketType = 0x06
-	PULL   SocketType = 0x07
-	PUSH   SocketType = 0x08
-)
