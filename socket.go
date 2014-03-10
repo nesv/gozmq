@@ -18,6 +18,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 package gozmq
 
+import (
+	"fmt"
+	"net"
+	"net/url"
+)
+
 type SendFlags int
 
 const (
@@ -72,30 +78,95 @@ const (
 )
 
 type Socket struct {
-	Type    SocketType
-	Options map[SocketOption]interface{}
+	Type       SocketType
+	Options    map[SocketOption]interface{}
+	transports map[string]net.Listener
+	recvBuffer chan net.Conn
+	sendBuffer chan net.Conn
 }
 
-func Bind(net, addr string) error {
+func (s *Socket) Bind(addr string) error {
+	endpoint, err := url.Parse(addr)
+	if err != nil {
+		return err
+	}
+
+	// Check to make sure the user is not trying to bind using the wrong
+	// type of socket.
+	switch s.Type {
+	case PUB, REP, ROUTER, PUSH, PAIR:
+	default:
+		return fmt.Errorf("invalid socket type; cannot bind")
+	}
+
+	switch endpoint.Scheme {
+	case "tcp":
+		l, err := net.Listen("tcp", endpoint.Host)
+		if err != nil {
+			return err
+		}
+
+	case "ipc":
+		// Use UNIX sockets?
+		fallthrough
+
+	case "inproc":
+		// Use channels?
+		fallthrough
+
+	case "pgm", "epgm":
+		fallthrough
+
+	default:
+		return fmt.Errorf("the requested transport protocol is not supported")
+	}
+
+	// Check to see if the addr->listener map was initialized.
+	if s.transports == nil {
+		s.transports = make(map[string]net.Listener)
+	}
+
+	// Add the listener to the addr->listener map.
+	s.transports[addr] = l
+
+	// Now, run a goroutine that will handle any connections.
+	go s.listenTo(l)
 	return nil
 }
 
-func Connect(net, addr string) error {
+func (s *Socket) listenTo(l net.Listener) {
+	defer l.Close()
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			continue
+		}
+
+		s.recvBuffer <- conn
+	}
+}
+
+func (s *Socket) Connect(net, addr string) error {
 	return nil
 }
 
-func Send(m []byte, flags SendFlags) (n int, err error) {
+func (s *Socket) Send(m []byte, flags SendFlags) (n int, err error) {
+	conn := <-s.sendBuffer
+	n, err = conn.Write(m)
 	return
 }
 
-func Recv() (m []byte, err error) {
+func (s *Socket) Recv() (m []byte, err error) {
+	conn := <-s.recvBuffer
+	_, err = conn.Read(m)
+	s.sendBuffer <- conn
 	return
 }
 
-func SetSockOpt(op SocketOption, v interface{}) error {
+func (s *Socket) SetSockOpt(op SocketOption, v interface{}) error {
 	return nil
 }
 
-func GetSockOpt(op SocketOption) (v interface{}, err error) {
+func (s *Socket) GetSockOpt(op SocketOption) (v interface{}, err error) {
 	return
 }

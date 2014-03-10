@@ -20,14 +20,23 @@ package gozmq
 
 import (
 	"fmt"
+	"net"
 )
 
 func NewContext() *Context {
-	var c = &Context{}
+	var c = &Context{sockets: make([]Socket, 0)}
 	return c
 }
 
-type Context struct{}
+type Context struct {
+	sockets []Socket
+}
+
+func (c *Context) Close() {
+	for _, s := range c.sockets {
+		s.Close()
+	}
+}
 
 func (c *Context) NewSocket(t SocketType) (s *Socket, err error) {
 	switch t {
@@ -56,7 +65,13 @@ func (c *Context) NewSocket(t SocketType) (s *Socket, err error) {
 			TCP_KEEPALIVE_IDLE:      -1,
 			TCP_KEEPALIVE_CNT:       -1,
 			TCP_KEEPALIVE_INTVL:     -1}
-		s = &Socket{Type: t, Options: opts}
+		socket := Socket{
+			Type:       t,
+			Options:    opts,
+			recvBuffer: make(chan net.Conn, 1),
+			sendBuffer: make(chan net.Conn, 1)}
+		c.sockets = append(c.sockets, socket)
+		s = &socket
 	default:
 		err = fmt.Errorf("unsupported socket type %v", t)
 	}
